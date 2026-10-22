@@ -168,8 +168,14 @@
     }
 
     function resolveInstallation(settings) {
-        const id = INSTALLATIONS[settings.installation] ? settings.installation : DEFAULT_SETTINGS.installation;
+        const id = settings.installation || DEFAULT_SETTINGS.installation;
         const installation = INSTALLATIONS[id];
+        if (!installation) {
+            // Saved by a newer copy of this code than the one running here. For an unpacked extension that happens
+            // when the files changed on disk: pages read them afresh, the service worker keeps the old ones. Falling
+            // back to the default would silently open the wrong EduIDE.
+            return { id, unknown: true, label: id, url: '', apps: {} };
+        }
         const url = id === 'custom' ? String(settings.customUrl ?? '').trim() : installation.url;
         const detected = url ? settings.detected?.[normalizeUrl(url)] : undefined;
         return detected
@@ -195,6 +201,12 @@
 
     function buildLaunchUrl(settings, facts) {
         const installation = resolveInstallation(settings);
+        if (installation.unknown) {
+            throw new Error(
+                `This version of the extension does not know the EduIDE "${installation.id}". ` +
+                    'Reload the extension on chrome://extensions, then reload this page.'
+            );
+        }
         if (!installation.url) {
             throw new Error('No EduIDE address is configured. Set one in the extension options.');
         }

@@ -150,6 +150,20 @@
         $('status').textContent = '';
         render();
     });
+    // Choosing a preset takes effect at once, as in the popup; leaving it unsaved is how a click still opened TUM.
+    // Custom waits for Save, because its address has to be checked first.
+    $('installations').addEventListener('change', async (event) => {
+        const installation = event.target.value;
+        if (event.target.name !== 'installation' || installation === 'custom') {
+            if (installation === 'custom') {
+                $('status').textContent = 'Enter the address, then Save.';
+            }
+            return;
+        }
+        await chrome.storage.sync.set({ installation });
+        settings.installation = installation;
+        $('status').textContent = `Saved: ${EduIDE.INSTALLATIONS[installation].label}.`;
+    });
     $('form').addEventListener('submit', async (event) => {
         event.preventDefault();
         const current = render();

@@ -82,8 +82,13 @@ test('custom installations need a valid http(s) address', () => {
     assert.ok(url.startsWith('https://ide.example.org/start?'));
 });
 
-test('an unknown installation id falls back to TUM', () => {
-    assert.equal(EduIDE.resolveInstallation(settings({ installation: 'gone' })).id, 'tum');
+test('a missing installation means TUM, an unknown one is an error rather than a silent TUM', () => {
+    assert.equal(EduIDE.resolveInstallation(settings({ installation: undefined })).id, 'tum');
+    assert.equal(EduIDE.resolveInstallation(settings({ installation: 'from-a-newer-version' })).unknown, true);
+    assert.throws(
+        () => EduIDE.buildLaunchUrl(settings({ installation: 'from-a-newer-version' }), { nwo: 'o/r' }),
+        /does not know the EduIDE "from-a-newer-version".*Reload the extension/
+    );
 });
 
 test('nothing but a plain owner/repo reaches gitUri', () => {

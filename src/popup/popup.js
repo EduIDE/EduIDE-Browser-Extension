@@ -5,6 +5,9 @@
 
     const $ = (id) => document.getElementById(id);
 
+    // The loaded version, to compare with chrome://extensions after editing an unpacked copy.
+    $('version').textContent = `v${chrome.runtime.getManifest().version}`;
+
     $('options').addEventListener('click', (event) => {
         event.preventDefault();
         chrome.runtime.openOptionsPage();
