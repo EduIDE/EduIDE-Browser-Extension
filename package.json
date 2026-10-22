@@ -1,0 +1,11 @@
+{
+    "name": "eduide-github-extension",
+    "version": "0.1.0",
+    "private": true,
+    "description": "Prototype Chrome extension: \"Open in EduIDE\" in GitHub's Code menu.",
+    "license": "MIT",
+    "scripts": {
+        "test": "node --test test/*.test.js",
+        "zip": "rm -f open-in-eduide.zip && zip -qr open-in-eduide.zip manifest.json icons src"
+    }
+}

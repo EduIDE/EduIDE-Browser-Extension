@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Open in EduIDE · Settings</title>
+        <link rel="stylesheet" href="../shared.css" />
+        <link rel="stylesheet" href="options.css" />
+    </head>
+    <body>
+        <main>
+            <header>
+                <img src="../../icons/icon-48.png" alt="" width="36" height="36" />
+                <h1>Open in EduIDE · Settings</h1>
+            </header>
+
+            <form id="form">
+                <fieldset>
+                    <legend>EduIDE installation</legend>
+                    <div id="installations"></div>
+                    <label id="custom-url-row" class="stacked" hidden>
+                        Address of the landing page
+                        <input id="custom-url" type="url" placeholder="https://eduide.example.org/" />
+                    </label>
+                    <div class="detect">
+                        <button type="button" id="detect">Detect images</button>
+                        <button type="button" id="forget" class="link" hidden>Use the built-in list</button>
+                        <span id="detect-status" class="note" role="status"></span>
+                    </div>
+                    <p class="note">
+                        Reads the selected installation's <code>/config.js</code> to learn which images it offers. Chrome
+                        asks once for permission to read that site.
+                    </p>
+                </fieldset>
+
+                <fieldset>
+                    <legend>Language → image</legend>
+                    <p class="note">
+                        The repository's main language picks the image. Languages without one open the landing page's
+                        language picker. Override as JSON: an app id maps a language, an empty string removes a default.
+                        App ids must exist on the installation, or the landing page shows "Invalid default selection
+                        value".
+                    </p>
+                    <textarea id="overrides" rows="5" spellcheck="false" placeholder='{ "Kotlin": "", "Go": "java-17-latest" }'></textarea>
+                    <p id="overrides-error" class="message" hidden></p>
+                    <table>
+                        <thead>
+                            <tr><th>Language</th><th>App id</th></tr>
+                        </thead>
+                        <tbody id="mapping"></tbody>
+                    </table>
+                </fieldset>
+
+                <fieldset>
+                    <legend>Experimental</legend>
+                    <label class="inline">
+                        <input id="send-ref" type="checkbox" />
+                        Send the selected branch as <code>gitRef</code>. Today's landing page ignores it and clones the
+                        default branch.
+                    </label>
+                </fieldset>
+
+                <div class="actions">
+                    <button type="submit" class="primary">Save</button>
+                    <span id="status" role="status"></span>
+                </div>
+            </form>
+        </main>
+
+        <script src="../lib/eduide.js"></script>
+        <script src="options.js"></script>
+    </body>
+</html>

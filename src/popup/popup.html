@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Open in EduIDE</title>
+        <link rel="stylesheet" href="../shared.css" />
+        <link rel="stylesheet" href="popup.css" />
+    </head>
+    <body>
+        <header>
+            <img src="../../icons/icon-32.png" alt="" width="24" height="24" />
+            <h1>Open in EduIDE</h1>
+        </header>
+
+        <p id="message" class="message" hidden></p>
+
+        <dl id="facts" hidden>
+            <dt>Repository</dt>
+            <dd id="repo"></dd>
+            <dt>Language</dt>
+            <dd id="language"></dd>
+            <dt>Image</dt>
+            <dd id="app"></dd>
+            <dt>Branch</dt>
+            <dd id="ref"></dd>
+            <dt><label for="installation">EduIDE</label></dt>
+            <dd><select id="installation"></select></dd>
+        </dl>
+
+        <p id="note" class="note" hidden></p>
+
+        <button id="open" type="button" class="primary" disabled>Open in EduIDE</button>
+
+        <details id="url-details" hidden>
+            <summary>Launch URL</summary>
+            <code id="url"></code>
+        </details>
+
+        <footer><a href="#" id="options">Settings</a></footer>
+
+        <script src="../lib/eduide.js"></script>
+        <script src="popup.js"></script>
+    </body>
+</html>

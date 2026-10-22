@@ -1,0 +1,122 @@
+main {
+    max-width: 640px;
+    margin: 32px auto;
+    padding: 0 16px;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+fieldset {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px 16px;
+    margin: 0 0 16px;
+}
+
+legend {
+    font-weight: 600;
+    padding: 0 6px;
+}
+
+.installation {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 6px 0;
+    cursor: pointer;
+}
+
+.installation input {
+    margin-top: 3px;
+}
+
+.installation .host {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.installation .note {
+    display: block;
+}
+
+.stacked {
+    display: grid;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.inline {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+input[type='url'],
+textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--fg);
+    font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+table {
+    border-collapse: collapse;
+    margin-top: 12px;
+    width: 100%;
+}
+
+th,
+td {
+    text-align: left;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+td:last-child {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+}
+
+.detect {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 12px;
+}
+
+.detect button {
+    font: inherit;
+    padding: 5px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--fg);
+    cursor: pointer;
+}
+
+.detect button.link {
+    border: 0;
+    padding: 0;
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+.actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+#status {
+    color: var(--muted);
+}
