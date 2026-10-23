@@ -14,7 +14,11 @@
     const MENU_LIST = '[data-component="AnchoredOverlay"] ul[aria-label="Repository actions"]';
     const MENU_ITEM = ':scope > li[data-component="ActionList.Item"]';
     const LABEL = 'Open in EduIDE';
-    const PRIVATE_HINT = 'Private repositories are not supported yet';
+    const PRIVATE_HINT = 'Private repository: EduIDE will ask you to sign in to GitHub to clone it';
+    // A small padlock after the label, in the label's own colour.
+    const LOCK =
+        '<svg aria-hidden="true" focusable="false" viewBox="0 0 16 16" width="12" height="12" style="margin-left:6px;vertical-align:-1px;fill:currentColor">' +
+        '<path d="M4 7V5a4 4 0 1 1 8 0v2h.5A1.5 1.5 0 0 1 14 8.5v5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5v-5A1.5 1.5 0 0 1 3.5 7Zm1.5 0h5V5a2.5 2.5 0 0 0-5 0Z"/></svg>';
     // Mortarboard in the EduIDE logo's orange, sized like the octicons next to it.
     const ICON =
         '<svg aria-hidden="true" focusable="false" viewBox="0 0 16 16" width="16" height="16">' +
@@ -127,21 +131,18 @@
         control.removeAttribute('aria-labelledby');
         control.removeAttribute('aria-describedby');
 
-        const disabled = facts?.isPublic === false;
-        control.setAttribute('aria-label', disabled ? `${LABEL} (${PRIVATE_HINT.toLowerCase()})` : LABEL);
-        control.title = disabled ? PRIVATE_HINT : 'Open this repository in an EduIDE session';
-        if (disabled) {
-            control.setAttribute('aria-disabled', 'true');
-            control.style.opacity = '0.5';
-            control.style.cursor = 'not-allowed';
+        // Private repositories open like public ones: the link carries no credentials, and Scorpio
+        // asks the student to sign in to GitHub inside the session before it clones.
+        const isPrivate = facts?.isPublic === false;
+        if (isPrivate) {
+            label.insertAdjacentHTML('beforeend', LOCK);
         }
+        control.setAttribute('aria-label', isPrivate ? `${LABEL} (${PRIVATE_HINT.replace(/^P/, 'p')})` : LABEL);
+        control.title = isPrivate ? PRIVATE_HINT : 'Open this repository in an EduIDE session';
 
         control.addEventListener('click', (event) => {
             event.preventDefault();
             event.stopPropagation();
-            if (disabled) {
-                return;
-            }
             open(list);
             closeMenu(list);
         });

@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Open in EduIDE",
-    "version": "0.1.1",
+    "version": "0.2.0",
     "description": "Adds \"Open in EduIDE\" to GitHub's Code menu and opens the repository in an EduIDE session.",
     "minimum_chrome_version": "116",
     "icons": {
