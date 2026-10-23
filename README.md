@@ -164,7 +164,9 @@ reopens your first repository's session when you open a second one with the same
 
 **Not verified:** loading the packed extension in Chrome itself (the built-in test browser cannot load extensions), a
 logged-in launch on TUM, and the private clone against real GitHub (it was tested against a stand-in GitHub server on
-the local cluster, see [EduIDE/scorpio](https://github.com/EduIDE/scorpio)).
+the local cluster, see [EduIDE/scorpio#206](https://github.com/EduIDE/scorpio/pull/206)). The private-repository
+item was checked by loading the content script into a GitHub page marked private: padlock, tooltip, enabled, and a
+click sends `isPublic: false`.
 
 ## Unit tests
 
