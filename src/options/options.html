@@ -52,6 +52,16 @@
                 </fieldset>
 
                 <fieldset>
+                    <legend>Git hosts</legend>
+                    <p class="note">
+                        The toolbar button opens repositories on github.com, gitlab.com and codeberg.org. Add a
+                        self-hosted server with one line each, <code>host gitlab</code> or <code>host gitea</code>
+                        (Forgejo counts as Gitea). The EduIDE installation must also allow the host.
+                    </p>
+                    <textarea id="hosts" rows="3" spellcheck="false" placeholder="git.example.org gitlab&#10;code.example.org gitea"></textarea>
+                </fieldset>
+
+                <fieldset>
                     <legend>Experimental</legend>
                     <label class="inline">
                         <input id="send-ref" type="checkbox" />

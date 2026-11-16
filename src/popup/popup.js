@@ -38,8 +38,11 @@
         facts = await chrome.tabs.sendMessage(tab.id, { type: 'eduide:facts' });
     } catch {
         // No content script in this tab: not github.com, or the page was open before the extension was loaded.
-        showMessage('Open a GitHub repository page. If you are on one, reload it first.');
-        return;
+        facts = EduIDE.repoFromUrl(tab.url, settings.hosts);
+        if (!facts) {
+            showMessage('Open a GitHub, GitLab or Gitea repository page. If you are on one, reload it first.');
+            return;
+        }
     }
     if (!facts) {
         showMessage('This GitHub page is not a repository.');
@@ -59,8 +62,8 @@
         if (installation.id === 'custom' && installation.url) {
             $('installation').selectedOptions[0].textContent = `Custom · ${installation.url}`;
         }
-        $('repo').textContent = `${facts.nwo}${facts.isPublic === false ? ' (private)' : ''}`;
-        $('language').textContent = facts.language ?? 'unknown (open the repository root once)';
+        $('repo').textContent = `${facts.host ? `${facts.host}/` : ''}${facts.nwo}${facts.isPublic === false ? ' (private)' : ''}`;
+        $('language').textContent = facts.language ?? 'unknown (the landing page asks)';
         $('app').textContent = appDef ?? 'chosen on the landing page';
         $('ref').textContent = facts.ref
             ? settings.sendRef
