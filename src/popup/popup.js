@@ -38,8 +38,9 @@
         facts = await chrome.tabs.sendMessage(tab.id, { type: 'eduide:facts' });
     } catch {
         // No content script in this tab: not github.com, or the page was open before the extension was loaded.
+        // GitHub is excluded: its private-repository check needs the content script, so reload instead.
         facts = EduIDE.repoFromUrl(tab.url, settings.hosts);
-        if (!facts) {
+        if (!facts || facts.host === 'github.com') {
             showMessage('Open a GitHub, GitLab or Gitea repository page. If you are on one, reload it first.');
             return;
         }

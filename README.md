@@ -66,7 +66,7 @@ To add a self-hosted server, open **Options → Git hosts** and add one line per
 The link is `https://<eduide>/?gitUri=https://<host>/<path>.git`, plus `appDef` when the language is known (GitHub
 only) and `gitRef` when enabled in the options. Credentials in the tab's address are never copied into it.
 
-**Limits:** a ref is the first path segment after `tree`, `blob` or `branch`, so a branch with a slash
+
 (`feature/x`) is cut at the slash, except when the URL encodes it as `feature%2Fx`. A group page that is not under
 `/groups` (`/group/sub`) looks like a project, and the landing page then fails to clone it. Only `https://` hosts work.
 

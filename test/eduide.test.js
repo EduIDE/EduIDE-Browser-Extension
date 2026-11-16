@@ -45,10 +45,30 @@ test('repoFromUrl returns nothing for other pages, hosts and schemes', () => {
     for (const url of [
         'https://gitlab.com/', 'https://gitlab.com/users/sign_in', 'https://gitlab.com/explore/projects', 'https://gitlab.com/groups/g/-/issues',
         'https://gitlab.com/-/profile', 'https://gitlab.com/group', 'https://codeberg.org/explore/repos', 'https://codeberg.org/user/login',
-        'https://codeberg.org/owner', 'https://example.org/a/b', 'http://gitlab.com/a/b', 'not a url'
+        'https://codeberg.org/owner', 'https://codeberg.org/alice/-/projects',
+        'https://codeberg.org/attachments/0a1b2c3d-0000-4000-8000-000000000000', 'https://codeberg.org/avatars/abc', 'https://codeberg.org/.well-known/openid-configuration',
+        'https://example.org/a/b', 'http://gitlab.com/a/b', 'not a url'
     ]) {
         assert.equal(EduIDE.repoFromUrl(url, {}), undefined, url);
     }
+});
+
+test('refs that git or the landing page would refuse are dropped', () => {
+    const ref = (name) => EduIDE.repoFromUrl(`https://codeberg.org/o/r/src/branch/${name}`, {}).ref;
+    assert.equal(ref('main'), 'main');
+    for (const bad of ['-x', 'a..b', 'a@%7Bb', 'a%20b', 'a%0Ab', 'a%00b']) {
+        assert.equal(ref(bad), undefined, bad);
+    }
+    assert.equal(EduIDE.repoFromUrl('https://gitlab.com/g/r/-/tree/--upload-pack', {}).ref, undefined);
+});
+
+test('gitlab pages without /-/ end the project path', () => {
+    assert.equal(EduIDE.repoFromUrl('https://gitlab.com/group/project/activity', {}).nwo, 'group/project');
+    assert.equal(EduIDE.repoFromUrl('https://gitlab.com/g/s/r/issues/3', {}).nwo, 'g/s/r');
+});
+
+test('host names such as constructor are not hosts', () => {
+    assert.equal(EduIDE.repoFromUrl('https://constructor/a/b', {}), undefined);
 });
 
 test('configured hosts are read by their type', () => {

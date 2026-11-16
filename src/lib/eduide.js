@@ -103,7 +103,13 @@
 
     // First path segments that are GitLab or Gitea pages, not namespaces. Best effort, like RESERVED_OWNERS.
     const RESERVED_GITLAB = new Set(['-', 'admin', 'api', 'dashboard', 'explore', 'groups', 'help', 'oauth', 'profile', 'projects', 'search', 'snippets', 'users']);
-    const RESERVED_GITEA = new Set(['-', 'admin', 'api', 'assets', 'explore', 'issues', 'milestones', 'notifications', 'org', 'pulls', 'repo', 'user']);
+    const RESERVED_GITEA = new Set(['-', 'admin', 'api', 'assets', 'attachments', 'avatars', 'explore', 'issues', 'milestones', 'notifications', 'org', 'pulls', 'repo', 'user']);
+
+    // Project pages GitLab still serves without the /-/ marker. A project has two segments or more, so the first one
+    // at index 2 or later ends the path. A subgroup with one of these names is not found, which is rare.
+    const GITLAB_SUBPAGES = new Set(['activity', 'blob', 'branches', 'commits', 'compare', 'find_file', 'forks', 'graphs', 'issues', 'merge_requests', 'network', 'pipelines', 'raw', 'settings', 'tags', 'tree', 'wikis']);
+    // Same rule as the landing page's sanitizeGitRef: a bad ref is dropped, not repaired.
+    const UNSAFE_REF = /^-|\.\.|@\{|[\s\x00-\x1f\x7f]/;
 
     const SEGMENT_PATTERN = /^[A-Za-z0-9._-]+$/;
     const HOST_PATTERN = /^[a-z0-9.-]+(?::\d{1,5})?$/i;
@@ -131,7 +137,8 @@
         } catch {
             return undefined;
         }
-        const type = { ...hosts, ...DEFAULT_HOSTS }[url.host];
+        const known = { ...hosts, ...DEFAULT_HOSTS };
+        const type = Object.hasOwn(known, url.host) ? known[url.host] : undefined;
         if (url.protocol !== 'https:' || !type) {
             return undefined;
         }
@@ -143,9 +150,12 @@
         let path;
         let kind, refType, ref;
         if (type === 'gitlab') {
-            const dash = segments.indexOf('-');
-            path = dash < 0 ? segments : segments.slice(0, dash);
-            [kind, ref] = dash < 0 ? [] : segments.slice(dash + 1);
+            let cut = segments.indexOf('-');
+            if (cut < 0) {
+                cut = segments.findIndex((segment, i) => i >= 2 && GITLAB_SUBPAGES.has(segment));
+            }
+            path = cut < 0 ? segments : segments.slice(0, cut);
+            [kind, ref] = cut < 0 ? [] : segments.slice(cut + 1);
             if (kind !== 'tree' && kind !== 'blob') {
                 ref = undefined;
             }
@@ -164,14 +174,15 @@
             return undefined;
         }
         try {
-            return { host: url.host, nwo: path.join('/'), ref: ref && decodeURIComponent(ref) };
+            ref = ref && decodeURIComponent(ref);
         } catch {
-            return { host: url.host, nwo: path.join('/') };
+            ref = undefined;
         }
+        return { host: url.host, nwo: path.join('/'), ref: ref && !UNSAFE_REF.test(ref) ? ref : undefined };
     }
 
     function isValidSegment(segment) {
-        return SEGMENT_PATTERN.test(segment) && segment !== '.' && segment !== '..';
+        return SEGMENT_PATTERN.test(segment) && !segment.startsWith('.') && segment !== '-';
     }
 
     // One "host type" per line, as typed on the options page.
