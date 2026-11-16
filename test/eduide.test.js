@@ -15,6 +15,87 @@ test('repoFromPath reads owner/repo and skips GitHub pages', () => {
     assert.equal(EduIDE.repoFromPath('/'), undefined);
 });
 
+test('repoFromUrl keeps reading GitHub repositories', () => {
+    assert.deepEqual(EduIDE.repoFromUrl('https://github.com/octocat/Hello-World/tree/main', {}), { host: 'github.com', nwo: 'octocat/Hello-World' });
+    assert.equal(EduIDE.repoFromUrl('https://github.com/settings/profile', {}), undefined);
+});
+
+test('repoFromUrl reads GitLab projects, subgroups and refs', () => {
+    assert.deepEqual(EduIDE.repoFromUrl('https://gitlab.com/group/sub/repo', {}), { host: 'gitlab.com', nwo: 'group/sub/repo', ref: undefined });
+    assert.deepEqual(EduIDE.repoFromUrl('https://gitlab.com/group/sub/repo/-/tree/dev/src', {}), { host: 'gitlab.com', nwo: 'group/sub/repo', ref: 'dev' });
+    assert.equal(EduIDE.repoFromUrl('https://gitlab.com/group/repo/-/blob/v1.0/README.md', {}).ref, 'v1.0');
+    assert.equal(EduIDE.repoFromUrl('https://gitlab.com/group/repo/-/issues', {}).ref, undefined);
+    assert.equal(EduIDE.repoFromUrl('https://gitlab.com/group/repo.git', {}).nwo, 'group/repo');
+    assert.equal(EduIDE.repoFromUrl('https://gitlab.com/group/repo/-/tree/feature%2Fx', {}).ref, 'feature/x');
+    // a slash in a ref cannot be told from a folder, so only the first segment counts
+    assert.equal(EduIDE.repoFromUrl('https://gitlab.com/group/repo/-/tree/feature/x', {}).ref, 'feature');
+});
+
+test('repoFromUrl reads Gitea projects and refs', () => {
+    const repo = (path) => EduIDE.repoFromUrl(`https://codeberg.org${path}`, {});
+    assert.deepEqual(repo('/owner/repo'), { host: 'codeberg.org', nwo: 'owner/repo', ref: undefined });
+    assert.equal(repo('/owner/repo/src/branch/main/docs').ref, 'main');
+    assert.equal(repo('/owner/repo/src/tag/v2').ref, 'v2');
+    assert.equal(repo('/owner/repo/src/commit/0123abc').ref, '0123abc');
+    assert.equal(repo('/owner/repo/issues').ref, undefined);
+    assert.equal(repo('/owner/repo/issues').nwo, 'owner/repo');
+});
+
+test('repoFromUrl returns nothing for other pages, hosts and schemes', () => {
+    for (const url of [
+        'https://gitlab.com/', 'https://gitlab.com/users/sign_in', 'https://gitlab.com/explore/projects', 'https://gitlab.com/groups/g/-/issues',
+        'https://gitlab.com/-/profile', 'https://gitlab.com/group', 'https://codeberg.org/explore/repos', 'https://codeberg.org/user/login',
+        'https://codeberg.org/owner', 'https://codeberg.org/alice/-/projects',
+        'https://codeberg.org/attachments/0a1b2c3d-0000-4000-8000-000000000000', 'https://codeberg.org/avatars/abc', 'https://codeberg.org/.well-known/openid-configuration',
+        'https://example.org/a/b', 'http://gitlab.com/a/b', 'not a url'
+    ]) {
+        assert.equal(EduIDE.repoFromUrl(url, {}), undefined, url);
+    }
+});
+
+test('refs that git or the landing page would refuse are dropped', () => {
+    const ref = (name) => EduIDE.repoFromUrl(`https://codeberg.org/o/r/src/branch/${name}`, {}).ref;
+    assert.equal(ref('main'), 'main');
+    for (const bad of ['-x', 'a..b', 'a@%7Bb', 'a%20b', 'a%0Ab', 'a%00b']) {
+        assert.equal(ref(bad), undefined, bad);
+    }
+    assert.equal(EduIDE.repoFromUrl('https://gitlab.com/g/r/-/tree/--upload-pack', {}).ref, undefined);
+});
+
+test('gitlab pages without /-/ end the project path', () => {
+    assert.equal(EduIDE.repoFromUrl('https://gitlab.com/group/project/activity', {}).nwo, 'group/project');
+    assert.equal(EduIDE.repoFromUrl('https://gitlab.com/g/s/r/issues/3', {}).nwo, 'g/s/r');
+});
+
+test('host names such as constructor are not hosts', () => {
+    assert.equal(EduIDE.repoFromUrl('https://constructor/a/b', {}), undefined);
+});
+
+test('configured hosts are read by their type', () => {
+    const hosts = EduIDE.parseHosts('git.example.org gitlab\n\n Code.Example.org   gitea ');
+    assert.deepEqual(hosts, { 'git.example.org': 'gitlab', 'code.example.org': 'gitea' });
+    assert.equal(EduIDE.repoFromUrl('https://git.example.org:8443/a/b/c', { 'git.example.org:8443': 'gitlab' }).nwo, 'a/b/c');
+    assert.equal(EduIDE.repoFromUrl('https://code.example.org/a/b/src/branch/x', hosts).ref, 'x');
+    assert.throws(() => EduIDE.parseHosts('git.example.org svn'), /not of the form/);
+    assert.throws(() => EduIDE.parseHosts('https://git.example.org gitlab'), /not of the form/);
+});
+
+test('credentials in the tab address never reach the launch URL', () => {
+    const repo = EduIDE.repoFromUrl('https://user:secret@gitlab.com/g/s/r/-/tree/main', {});
+    const url = EduIDE.buildLaunchUrl(settings(), repo);
+    assert.equal(params(url).gitUri, 'https://gitlab.com/g/s/r.git');
+    assert.ok(!url.includes('secret') && !url.includes('user'));
+    assert.equal(EduIDE.repoFromUrl('https://gitlab.com/g/user:secret@x', {}), undefined);
+});
+
+test('the launch URL names the host of the repository', () => {
+    assert.equal(params(EduIDE.buildLaunchUrl(settings(), { host: 'gitlab.com', nwo: 'g/s/r' })).gitUri, 'https://gitlab.com/g/s/r.git');
+    assert.equal(params(EduIDE.buildLaunchUrl(settings(), { host: 'codeberg.org', nwo: 'o/r', ref: 'dev' })).appDef, undefined);
+    for (const facts of [{ host: 'gitlab.com', nwo: 'r' }, { host: 'gitlab.com', nwo: 'g/..' }, { host: 'a/b', nwo: 'g/r' }]) {
+        assert.throws(() => EduIDE.buildLaunchUrl(settings(), facts), /not a repository/);
+    }
+});
+
 test('parseArchiveRef follows the Download ZIP link', () => {
     assert.equal(EduIDE.parseArchiveRef('/o/r/archive/refs/heads/main.zip'), 'main');
     assert.equal(EduIDE.parseArchiveRef('/o/r/archive/refs/heads/feature/login-form.zip'), 'feature/login-form');
@@ -37,8 +118,7 @@ test('the TUM launch URL preselects the image and clones over HTTPS', () => {
     assert.equal(new URL(url).origin, 'https://eduide.artemis.cit.tum.de');
     assert.deepEqual(params(url), {
         appDef: 'java-17-latest',
-        gitUri: 'https://github.com/octocat/Hello-World.git',
-        source: 'github'
+        gitUri: 'https://github.com/octocat/Hello-World.git'
     });
 });
 
@@ -93,7 +173,7 @@ test('a missing installation means TUM, an unknown one is an error rather than a
 
 test('nothing but a plain owner/repo reaches gitUri', () => {
     for (const nwo of [undefined, '', 'o', 'o/r/x', 'o/..', 'o/r?x=1', 'o/r#x', 'user:token@o/r']) {
-        assert.throws(() => EduIDE.buildLaunchUrl(settings(), { nwo }), /not a GitHub repository/, String(nwo));
+        assert.throws(() => EduIDE.buildLaunchUrl(settings(), { nwo }), /not a repository/, String(nwo));
     }
 });
 

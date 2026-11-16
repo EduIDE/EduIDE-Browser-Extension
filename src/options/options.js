@@ -28,6 +28,7 @@
 
     $('custom-url').value = settings.customUrl;
     $('overrides').value = Object.keys(settings.overrides).length ? JSON.stringify(settings.overrides, undefined, 2) : '';
+    $('hosts').value = Object.entries(settings.hosts).map((entry) => entry.join(' ')).join('\n');
     $('send-ref').checked = settings.sendRef;
 
     function readForm() {
@@ -46,6 +47,7 @@
             customUrl: $('custom-url').value.trim(),
             overrides,
             detected: settings.detected,
+            hosts: EduIDE.parseHosts($('hosts').value),
             sendRef: $('send-ref').checked
         };
     }
