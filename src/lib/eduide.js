@@ -190,10 +190,17 @@
         const hosts = {};
         for (const line of String(text ?? '').split('\n').map((l) => l.trim()).filter(Boolean)) {
             const [host, type, ...extra] = line.split(/\s+/);
-            if (!HOST_PATTERN.test(host) || !['gitlab', 'gitea'].includes(type) || extra.length) {
+            // As the tab URL reports it: lowercase, and without the default port 443.
+            let key;
+            try {
+                key = HOST_PATTERN.test(host) ? new URL(`https://${host}`).host : undefined;
+            } catch {
+                // a port above 65535
+            }
+            if (!key || !['gitlab', 'gitea'].includes(type) || extra.length) {
                 throw new Error(`"${line}" is not of the form "host gitlab" or "host gitea".`);
             }
-            hosts[host.toLowerCase()] = type;
+            hosts[key] = type;
         }
         return hosts;
     }

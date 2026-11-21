@@ -60,8 +60,8 @@ is known and the landing page asks for it.
   `/src/tag/<ref>` or `/src/commit/<sha>`.
 
 To add a self-hosted server, open **Options → Git hosts** and add one line per server, `git.example.org gitlab` or
-`code.example.org gitea` (Forgejo is `gitea`). The EduIDE installation must also list the host in its
-`allowedGitHosts`, or the landing page refuses the link.
+`code.example.org gitea` (Forgejo is `gitea`). A server on a port other than 443 is `git.example.org:8443 gitlab`.
+The EduIDE installation must also list the host in its `allowedHosts`, or the landing page refuses the link.
 
 The link is `https://<eduide>/?gitUri=https://<host>/<path>.git`, plus `appDef` when the language is known (GitHub
 only) and `gitRef` when enabled in the options. Credentials in the tab's address are never copied into it.

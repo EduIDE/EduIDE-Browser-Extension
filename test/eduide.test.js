@@ -76,6 +76,10 @@ test('configured hosts are read by their type', () => {
     assert.deepEqual(hosts, { 'git.example.org': 'gitlab', 'code.example.org': 'gitea' });
     assert.equal(EduIDE.repoFromUrl('https://git.example.org:8443/a/b/c', { 'git.example.org:8443': 'gitlab' }).nwo, 'a/b/c');
     assert.equal(EduIDE.repoFromUrl('https://code.example.org/a/b/src/branch/x', hosts).ref, 'x');
+    const defaultPort = EduIDE.parseHosts('git.example.org:443 gitlab');
+    assert.deepEqual(defaultPort, { 'git.example.org': 'gitlab' });
+    assert.equal(EduIDE.repoFromUrl('https://git.example.org:443/a/b', defaultPort).nwo, 'a/b');
+    assert.throws(() => EduIDE.parseHosts('git.example.org:99999 gitea'), /not of the form/);
     assert.throws(() => EduIDE.parseHosts('git.example.org svn'), /not of the form/);
     assert.throws(() => EduIDE.parseHosts('https://git.example.org gitlab'), /not of the form/);
 });
