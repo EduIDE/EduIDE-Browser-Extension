@@ -63,8 +63,37 @@ To add a self-hosted server, open **Options → Git hosts** and add one line per
 `code.example.org gitea` (Forgejo is `gitea`). A server on a port other than 443 is `git.example.org:8443 gitlab`.
 The EduIDE installation must also list the host in its `allowedHosts`, or the landing page refuses the link.
 
+### Hosts announced by the installation
+
+EduIDE 3.x lets students connect their GitHub or GitLab account on the landing page, and its public
+`GET /api/v1/status` lists the Git hosts it does that for. The extension reads that list for the selected EduIDE and
+treats each host as a supported Git host of its type: `gitlab` hosts are read like GitLab, `github` hosts other than
+github.com like GitHub (toolbar button only, since the Code menu item exists on github.com only). **Options → Git hosts
+from the installation** shows the list (display name, host, type) and the time of the last refresh.
+
+- The answer is cached for 24 hours per EduIDE address, in `chrome.storage.local`. It is refreshed when you choose
+  another EduIDE or save a custom address in the options, and by **Refresh** there.
+- Hosts in **Git hosts** (manual) win over announced ones. The built-in hosts win over both.
+- A failed or missing answer changes nothing: the old list stays, and only the options page reports the error. Older
+  installations and installations with the feature off have no list.
+- The extension never handles tokens or credentials. The student connects the account on the landing page.
+
+**Permission.** Reading the status needs access to the EduIDE site. The manifest keeps `activeTab` and declares host
+access only as `optional_host_permissions`, as for **Detect images**: Chrome asks once, for that one origin, when you
+click **Refresh**, choose an EduIDE or save a custom address in the options. The popup and the toolbar never ask; they use the cache, or read the
+site if it is already allowed. The status page is public and needs no cookies, so the request is sent without
+credentials. A broad `host_permissions` entry would give the extension access to every site it never needs, and a
+content script on the EduIDE site is not needed because nothing on that page is read.
+
 The link is `https://<eduide>/?gitUri=https://<host>/<path>.git`, plus `appDef` when the language is known (GitHub
 only) and `gitRef` when enabled in the options. Credentials in the tab's address are never copied into it.
+
+**The 3.0 landing page** (`landing-page/src/launch.ts`, `parseLaunchParams`) requires `appDef`: a link without it is
+not a launch link, the page shows its normal home and `gitUri` is not read. Links for GitLab and Gitea (and GitHub
+repositories in an unmapped language) carry no `appDef` and therefore only reach the home page until the landing page
+accepts a link without one. `appDef` must be a template name of that installation, else the page shows "unknown
+template". `gitRef` is parsed, but `GIT_REF` reaches a session only when the template lists it in `injectableKeys`,
+which none does yet (Docs PR 35). `gitUri` may be in the query; the page reads it from there.
 
 
 (`feature/x`) is cut at the slash, except when the URL encodes it as `feature%2Fx`. A group page that is not under
@@ -209,14 +238,15 @@ src/lib/eduide.js        installations, app ids, settings, launch URL; shared by
 src/content/github.js    finds the Code menu, injects the item, reads repository details from the page
 src/background.js        opens the launch tab for menu clicks
 src/popup/               toolbar button: GitHub, GitLab and Gitea
-src/options/             installation, language overrides, Git hosts, experimental gitRef
+src/options/             installation, language overrides, Git hosts, announced Git hosts, experimental gitRef
 test/eduide.test.js      node:test
 ```
 
 ## How it finds things on GitHub
 
-All details come from the page. The extension makes no GitHub API calls and no requests to EduIDE: it only opens a
-tab. Its permissions are `storage` and `activeTab` (the toolbar popup reads the active tab's address), plus content-script access to `github.com`.
+All details come from the page. The extension makes no GitHub API calls and, apart from the optional status read, no requests to EduIDE: it only opens a
+tab. Its permissions are `storage` and `activeTab` (the toolbar popup reads the active tab's address), plus content-script access to `github.com`. The status request for announced Git hosts is the only network call, and it
+needs the optional host permission described above.
 
 | What | Where on the page |
 |---|---|
