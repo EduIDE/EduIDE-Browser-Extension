@@ -73,7 +73,7 @@
         // landing page URL -> { apps, detectedAt }, read from that installation's /config.js. Replaces the built-in
         // mapping for that address.
         detected: {},
-        // Today's landing page ignores gitRef; it is sent only for testing the proposed GIT_REF support.
+        // The 3.0 landing page reads gitRef but drops it: no template lists GIT_REF yet. Sent only to prepare for that.
         sendRef: false,
         // Self-hosted GitLab and Gitea servers: host -> 'gitlab' | 'gitea'. Added to DEFAULT_HOSTS.
         hosts: {}
@@ -292,6 +292,79 @@
         return language ? effectiveApps(settings)[language] : undefined;
     }
 
+    // Git hosts an installation announces on its public /api/v1/status (3.x, optional field `gitProviders`). The answer
+    // comes from the network, so only a bare lowercase hostname and a known type pass; everything else is dropped
+    // instead of repaired. Ports are not accepted: the contract names a host, and a port would need a second look.
+    const PROVIDER_HOST = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/;
+    const PROVIDER_TYPES = ['github', 'gitlab'];
+    const PROVIDERS_TTL_MS = 24 * 60 * 60 * 1000;
+    const PROVIDERS_KEY = 'gitProviders';
+    const PROVIDERS_TIMEOUT_MS = 5000;
+
+    function parseGitProviders(status) {
+        const list = status && typeof status === 'object' ? status.gitProviders : undefined;
+        const providers = [];
+        for (const entry of Array.isArray(list) ? list : []) {
+            if (!entry || typeof entry.host !== 'string' || !PROVIDER_HOST.test(entry.host) || !PROVIDER_TYPES.includes(entry.type)) {
+                continue;
+            }
+            if (providers.some((provider) => provider.host === entry.host)) {
+                continue;
+            }
+            // Shown as text only; the length cap keeps a hostile value from filling the options page.
+            const name = typeof entry.displayName === 'string' ? entry.displayName.trim().slice(0, 64) : '';
+            providers.push({ host: entry.host, type: entry.type, displayName: name || entry.host });
+        }
+        return providers;
+    }
+
+    // Hosts the installation announces, overridden line by line by the manually configured ones.
+    function mergeHosts(manualHosts, providers) {
+        const hosts = {};
+        for (const { host, type } of providers ?? []) {
+            hosts[host] = type;
+        }
+        return { ...hosts, ...manualHosts };
+    }
+
+    // The status endpoint sits at the origin, whatever path the landing page link has.
+    function statusUrl(installationUrl) {
+        try {
+            const url = new URL(installationUrl);
+            return url.protocol === 'https:' || url.protocol === 'http:' ? `${url.origin}/api/v1/status` : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    // The announced providers for one installation, cached per origin for a day. A failed fetch keeps whatever the cache
+    // holds, even when stale, and reports the failure in `error` for the options page; the other callers ignore it.
+    async function loadGitProviders(installationUrl, storageArea, fetchFn, { force = false, now = Date.now() } = {}) {
+        const url = statusUrl(installationUrl);
+        if (!url) {
+            return { providers: [] };
+        }
+        const origin = new URL(url).origin;
+        // One key per installation: a shared object would lose entries when two loads overlap.
+        const key = `${PROVIDERS_KEY}:${origin}`;
+        const cached = (await storageArea.get(key))[key];
+        const valid = cached && Array.isArray(cached.providers) && Number.isFinite(cached.fetchedAt);
+        if (valid && !force && now - cached.fetchedAt >= 0 && now - cached.fetchedAt < PROVIDERS_TTL_MS) {
+            return { providers: cached.providers, fetchedAt: cached.fetchedAt };
+        }
+        try {
+            const response = await fetchFn(url, { cache: 'no-store', credentials: 'omit', signal: AbortSignal.timeout(PROVIDERS_TIMEOUT_MS) });
+            if (!response.ok) {
+                throw new Error(`the status page answered ${response.status}`);
+            }
+            const providers = parseGitProviders(await response.json());
+            await storageArea.set({ [key]: { providers, fetchedAt: now } });
+            return { providers, fetchedAt: now };
+        } catch (error) {
+            return valid ? { providers: cached.providers, fetchedAt: cached.fetchedAt, error } : { providers: [], error };
+        }
+    }
+
     function buildLaunchUrl(settings, facts) {
         const installation = resolveInstallation(settings);
         if (installation.unknown) {
@@ -349,6 +422,10 @@
         repoFromPath,
         repoFromUrl,
         parseHosts,
+        parseGitProviders,
+        mergeHosts,
+        statusUrl,
+        loadGitProviders,
         parseArchiveRef,
         parseLanguageLabel,
         parseLandingConfig,

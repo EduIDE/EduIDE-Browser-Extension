@@ -62,10 +62,28 @@
                 </fieldset>
 
                 <fieldset>
+                    <legend>Git hosts from the installation</legend>
+                    <p class="note">
+                        EduIDE 3.x announces the Git hosts it connects accounts for. They work like the hosts above,
+                        which win on a conflict. Read-only.
+                    </p>
+                    <table>
+                        <thead>
+                            <tr><th>Name</th><th>Host</th><th>Type</th></tr>
+                        </thead>
+                        <tbody id="providers"></tbody>
+                    </table>
+                    <div class="detect">
+                        <button type="button" id="refresh-providers">Refresh</button>
+                        <span id="providers-status" class="note" role="status"></span>
+                    </div>
+                </fieldset>
+
+                <fieldset>
                     <legend>Experimental</legend>
                     <label class="inline">
                         <input id="send-ref" type="checkbox" />
-                        Send the selected branch as <code>gitRef</code>. Today's landing page ignores it and clones the
+                        Send the selected branch as <code>gitRef</code>. The landing page drops it today and clones the
                         default branch.
                     </label>
                 </fieldset>

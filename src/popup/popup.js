@@ -33,15 +33,25 @@
         render();
     });
 
+    // Hosts the installation announces. No permission prompt here: the popup uses what the options page already
+    // allowed and the cache, and stays silent when there is nothing.
+    async function announcedProviders() {
+        const url = EduIDE.statusUrl(EduIDE.resolveInstallation(settings).url);
+        const allowed = url && (await chrome.permissions.contains({ origins: [`${new URL(url).origin}/*`] }));
+        const fetchFn = allowed ? fetch : () => Promise.reject(new Error('no host permission'));
+        return (await EduIDE.loadGitProviders(url, chrome.storage.local, fetchFn)).providers;
+    }
+
     let facts;
     try {
         facts = await chrome.tabs.sendMessage(tab.id, { type: 'eduide:facts' });
     } catch {
         // No content script in this tab: not github.com, or the page was open before the extension was loaded.
         // GitHub is excluded: its private-repository check needs the content script, so reload instead.
-        facts = EduIDE.repoFromUrl(tab.url, settings.hosts);
+        // Only here: a page with a content script, and manual hosts, never wait for the installation.
+        facts = EduIDE.repoFromUrl(tab.url, EduIDE.mergeHosts(settings.hosts, await announcedProviders()));
         if (!facts || facts.host === 'github.com') {
-            showMessage('Open a GitHub, GitLab or Gitea repository page. If you are on one, reload it first.');
+            showMessage('Open a repository page on a supported Git host. If you are on one, reload it first.');
             return;
         }
     }
@@ -65,7 +75,7 @@
         }
         $('repo').textContent = `${facts.host ? `${facts.host}/` : ''}${facts.nwo}${facts.isPublic === false ? ' (private)' : ''}`;
         $('language').textContent = facts.language ?? 'unknown (the landing page asks)';
-        $('app').textContent = appDef ?? 'chosen on the landing page';
+        $('app').textContent = appDef ?? 'not preselected';
         $('ref').textContent = facts.ref
             ? settings.sendRef
                 ? `${facts.ref} (sent as gitRef)`

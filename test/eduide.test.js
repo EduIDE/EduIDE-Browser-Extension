@@ -262,3 +262,147 @@ test('loadSettings fills in defaults', async () => {
     const storage = { get: async (defaults) => ({ ...defaults, installation: 'bonn', overrides: { Go: 'x' } }) };
     assert.deepEqual(await EduIDE.loadSettings(storage), { ...EduIDE.DEFAULT_SETTINGS, installation: 'bonn', overrides: { Go: 'x' } });
 });
+
+const provider = (over = {}) => ({ name: 'uni', type: 'gitlab', host: 'gitlab.example.org', displayName: 'Uni GitLab', ...over });
+
+test('parseGitProviders reads the status contract', () => {
+    const status = { gitProviders: [provider({ type: 'github', host: 'github.com', displayName: 'GitHub' }), provider()] };
+    assert.deepEqual(EduIDE.parseGitProviders(status), [
+        { host: 'github.com', type: 'github', displayName: 'GitHub' },
+        { host: 'gitlab.example.org', type: 'gitlab', displayName: 'Uni GitLab' }
+    ]);
+    assert.equal(EduIDE.parseGitProviders({ gitProviders: [provider({ displayName: undefined })] })[0].displayName, 'gitlab.example.org');
+});
+
+test('parseGitProviders tolerates a missing field and wrong types', () => {
+    for (const status of [undefined, null, 'x', 7, [], {}, { gitProviders: null }, { gitProviders: 'x' }, { gitProviders: {} }]) {
+        assert.deepEqual(EduIDE.parseGitProviders(status), [], JSON.stringify(status));
+    }
+    const bad = [null, 'x', 3, [], provider({ host: 7 }), provider({ type: 'gitea' }), provider({ type: ['gitlab'] }), provider({ host: undefined })];
+    assert.deepEqual(EduIDE.parseGitProviders({ gitProviders: bad }), []);
+    assert.equal(EduIDE.parseGitProviders({ gitProviders: [provider({ displayName: 42 })] })[0].displayName, 'gitlab.example.org');
+});
+
+test('parseGitProviders accepts bare lowercase hostnames only', () => {
+    for (const host of [
+        'gitlab.example.org/evil', 'user:pw@gitlab.example.org', 'gitlab.example.org:8443', 'GitLab.Example.org', 'https://gitlab.example.org',
+        'gitlab.example.org.', '', ' gitlab.example.org', 'git lab.example.org', '-a.org', 'a_b.org', '__proto__', 'git.example.org?x=1', 'a'.repeat(254)
+    ]) {
+        assert.deepEqual(EduIDE.parseGitProviders({ gitProviders: [provider({ host })] }), [], host);
+    }
+    assert.equal(EduIDE.parseGitProviders({ gitProviders: [provider({ host: 'localhost' })] }).length, 1);
+    assert.equal(EduIDE.parseGitProviders({ gitProviders: [provider(), provider({ displayName: 'again' })] }).length, 1);
+    assert.equal(EduIDE.parseGitProviders({ gitProviders: [provider({ displayName: 'x'.repeat(500) })] })[0].displayName.length, 64);
+});
+
+test('announced hosts merge with manual ones, which win', () => {
+    const providers = EduIDE.parseGitProviders({ gitProviders: [provider(), provider({ host: 'ghe.example.org', type: 'github' })] });
+    assert.deepEqual(EduIDE.mergeHosts({}, providers), { 'gitlab.example.org': 'gitlab', 'ghe.example.org': 'github' });
+    assert.deepEqual(EduIDE.mergeHosts({ 'gitlab.example.org': 'gitea', 'x.org': 'gitlab' }, providers), {
+        'gitlab.example.org': 'gitea',
+        'ghe.example.org': 'github',
+        'x.org': 'gitlab'
+    });
+    assert.deepEqual(EduIDE.mergeHosts({ 'x.org': 'gitlab' }, undefined), { 'x.org': 'gitlab' });
+});
+
+test('a provider host opens from the toolbar and builds a link by its type', () => {
+    const hosts = EduIDE.mergeHosts({}, EduIDE.parseGitProviders({ gitProviders: [provider(), provider({ host: 'ghe.example.org', type: 'github' })] }));
+    const gitlab = EduIDE.repoFromUrl('https://gitlab.example.org/g/s/r/-/tree/dev', hosts);
+    assert.deepEqual(gitlab, { host: 'gitlab.example.org', nwo: 'g/s/r', ref: 'dev' });
+    const url = EduIDE.buildLaunchUrl(settings(), gitlab);
+    assert.equal(params(url).gitUri, 'https://gitlab.example.org/g/s/r.git');
+    assert.equal(params(url).appDef, undefined);
+    assert.equal(params(url).gitRef, undefined);
+    const github = EduIDE.repoFromUrl('https://ghe.example.org/o/r/tree/main', hosts);
+    assert.deepEqual(github, { host: 'ghe.example.org', nwo: 'o/r' });
+    assert.equal(params(EduIDE.buildLaunchUrl(settings(), github)).gitUri, 'https://ghe.example.org/o/r.git');
+    assert.equal(EduIDE.repoFromUrl('https://other.example.org/o/r', hosts), undefined);
+});
+
+test('statusUrl points at the origin of the installation', () => {
+    assert.equal(EduIDE.statusUrl('https://ide.example.org/start/'), 'https://ide.example.org/api/v1/status');
+    assert.equal(EduIDE.statusUrl('http://localhost:3100'), 'http://localhost:3100/api/v1/status');
+    assert.equal(EduIDE.statusUrl(''), undefined);
+    assert.equal(EduIDE.statusUrl('javascript:alert(1)'), undefined);
+});
+
+function fakeStorage(initial = {}) {
+    const data = { ...initial };
+    return { data, get: async (key) => ({ [key]: data[key] }), set: async (items) => Object.assign(data, items) };
+}
+const answer = (body, status = 200) => async () => ({ ok: status < 400, status, json: async () => body });
+const URL_ = 'https://ide.example.org/';
+const ORIGIN = 'https://ide.example.org';
+const KEY = `gitProviders:${ORIGIN}`;
+
+test('loadGitProviders fetches, caches and reuses the answer for 24 hours', async () => {
+    const storage = fakeStorage();
+    let calls = 0;
+    const fetchFn = async (...args) => (calls++, answer({ gitProviders: [provider()] })(...args));
+    const t0 = 1_000_000;
+    const first = await EduIDE.loadGitProviders(URL_, storage, fetchFn, { now: t0 });
+    assert.deepEqual(first, { providers: [{ host: 'gitlab.example.org', type: 'gitlab', displayName: 'Uni GitLab' }], fetchedAt: t0 });
+    assert.equal(storage.data[KEY].fetchedAt, t0);
+    await EduIDE.loadGitProviders(URL_, storage, fetchFn, { now: t0 + 24 * 3600 * 1000 - 1 });
+    assert.equal(calls, 1);
+    await EduIDE.loadGitProviders(URL_, storage, fetchFn, { now: t0 + 24 * 3600 * 1000 });
+    assert.equal(calls, 2, 'expired');
+    await EduIDE.loadGitProviders(URL_, storage, fetchFn, { now: t0 + 24 * 3600 * 1000 + 5, force: true });
+    assert.equal(calls, 3, 'refresh forces a fetch');
+    await EduIDE.loadGitProviders('https://other.example.org/', storage, fetchFn, { now: t0 });
+    assert.equal(calls, 4, 'another installation has its own entry');
+    assert.deepEqual(Object.keys(storage.data).sort(), ['gitProviders:https://ide.example.org', 'gitProviders:https://other.example.org']);
+});
+
+test('a missing field is cached as no providers', async () => {
+    const storage = fakeStorage();
+    const result = await EduIDE.loadGitProviders(URL_, storage, answer({ version: '2.7' }), { now: 5 });
+    assert.deepEqual(result, { providers: [], fetchedAt: 5 });
+    assert.deepEqual(storage.data[KEY], { providers: [], fetchedAt: 5 });
+});
+
+test('a failed fetch changes nothing and keeps the stale cache', async () => {
+    const entry = { providers: [{ host: 'gitlab.example.org', type: 'gitlab', displayName: 'Uni GitLab' }], fetchedAt: 10 };
+    const storage = fakeStorage({ [KEY]: entry });
+    const later = 10 + 25 * 3600 * 1000;
+    for (const fetchFn of [answer({}, 503), async () => { throw new TypeError('Failed to fetch'); }, async () => ({ ok: true, json: async () => { throw new SyntaxError('bad json'); } })]) {
+        const result = await EduIDE.loadGitProviders(URL_, storage, fetchFn, { now: later });
+        assert.deepEqual(result.providers, entry.providers);
+        assert.equal(result.fetchedAt, 10);
+        assert.ok(result.error);
+        assert.deepEqual(storage.data[KEY], entry);
+    }
+    const empty = await EduIDE.loadGitProviders(URL_, fakeStorage(), answer({}, 500));
+    assert.deepEqual(empty.providers, []);
+    assert.ok(empty.error);
+});
+
+test('loadGitProviders survives a damaged cache and an unusable address', async () => {
+    for (const damaged of [{ [KEY]: 'x' }, { [KEY]: { providers: 'x', fetchedAt: 'y' } }, { [KEY]: null }]) {
+        const storage = fakeStorage(damaged);
+        assert.equal((await EduIDE.loadGitProviders(URL_, storage, answer({ gitProviders: [provider()] }), { now: 1 })).providers.length, 1);
+    }
+    let called = false;
+    assert.deepEqual(await EduIDE.loadGitProviders('', fakeStorage(), async () => (called = true)), { providers: [] });
+    assert.equal(called, false);
+});
+
+test('overlapping loads for two installations keep both cache entries', async () => {
+    const storage = fakeStorage();
+    const slowStorage = { ...storage, get: async (key) => { const value = await storage.get(key); await new Promise((resolve) => setTimeout(resolve, 5)); return value; } };
+    const ok = answer({ gitProviders: [provider()] });
+    await Promise.all([
+        EduIDE.loadGitProviders(URL_, slowStorage, ok, { now: 1 }),
+        EduIDE.loadGitProviders('https://other.example.org/', slowStorage, ok, { now: 1 })
+    ]);
+    assert.deepEqual(Object.keys(storage.data).sort(), ['gitProviders:https://ide.example.org', 'gitProviders:https://other.example.org']);
+});
+
+test('the status request is bounded by a timeout signal and fails soft', async () => {
+    let signal;
+    const result = await EduIDE.loadGitProviders(URL_, fakeStorage(), async (url, init) => { signal = init.signal; throw new DOMException('timed out', 'TimeoutError'); }, { now: 1 });
+    assert.ok(signal instanceof AbortSignal);
+    assert.deepEqual(result.providers, []);
+    assert.ok(result.error);
+});

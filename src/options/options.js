@@ -114,6 +114,54 @@
         render();
     });
 
+    // Rows come from a network answer; textContent keeps them inert.
+    function renderProviders({ providers, fetchedAt, error }) {
+        const rows = providers.map((provider) => {
+            const row = document.createElement('tr');
+            for (const value of [provider.displayName, provider.host, provider.type]) {
+                const cell = document.createElement('td');
+                cell.textContent = value;
+                row.append(cell);
+            }
+            return row;
+        });
+        if (!rows.length) {
+            const row = document.createElement('tr');
+            const cell = document.createElement('td');
+            cell.colSpan = 3;
+            cell.className = 'note';
+            cell.textContent = 'None announced.';
+            row.append(cell);
+            rows.push(row);
+        }
+        $('providers').replaceChildren(...rows);
+        const refreshed = fetchedAt ? `Last refreshed ${new Date(fetchedAt).toLocaleString()}.` : 'Never refreshed.';
+        $('providers-status').textContent = error ? `${refreshed} Refresh failed: ${error.message}.` : refreshed;
+    }
+
+    // Without a click there is no permission prompt, so a page load only reads the cache or a permitted site.
+    async function loadProviders({ force = false, ask = false } = {}) {
+        const url = EduIDE.statusUrl(currentInstallation().url);
+        if (!url) {
+            renderProviders({ providers: [] });
+            return;
+        }
+        const origins = [`${new URL(url).origin}/*`];
+        // A slower answer for an installation that is no longer selected must not overwrite the table.
+        const stillSelected = () => EduIDE.statusUrl(currentInstallation().url) === url;
+        try {
+            // Must run directly in the click handler: Chrome only shows the permission prompt for a user gesture.
+            const allowed = ask ? await chrome.permissions.request({ origins }) : await chrome.permissions.contains({ origins });
+            const fetchFn = allowed ? fetch : () => Promise.reject(new Error('permission to read the installation was not granted'));
+            const result = await EduIDE.loadGitProviders(url, chrome.storage.local, fetchFn, { force });
+            if (stillSelected()) renderProviders(result);
+        } catch (error) {
+            if (stillSelected()) renderProviders({ providers: [], error });
+        }
+    }
+
+    $('refresh-providers').addEventListener('click', () => loadProviders({ force: true, ask: true }));
+
     function render() {
         let current;
         try {
@@ -165,6 +213,7 @@
         await chrome.storage.sync.set({ installation });
         settings.installation = installation;
         $('status').textContent = `Saved: ${EduIDE.INSTALLATIONS[installation].label}.`;
+        loadProviders({ force: true, ask: true });
     });
     $('form').addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -182,7 +231,9 @@
         }
         await chrome.storage.sync.set(current);
         $('status').textContent = 'Saved.';
+        loadProviders({ force: true, ask: current.installation === 'custom' });
     });
 
     render();
+    loadProviders();
 })();
