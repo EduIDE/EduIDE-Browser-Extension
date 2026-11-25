@@ -41,7 +41,6 @@
         const fetchFn = allowed ? fetch : () => Promise.reject(new Error('no host permission'));
         return (await EduIDE.loadGitProviders(url, chrome.storage.local, fetchFn)).providers;
     }
-    const hosts = EduIDE.mergeHosts(settings.hosts, await announcedProviders());
 
     let facts;
     try {
@@ -49,7 +48,8 @@
     } catch {
         // No content script in this tab: not github.com, or the page was open before the extension was loaded.
         // GitHub is excluded: its private-repository check needs the content script, so reload instead.
-        facts = EduIDE.repoFromUrl(tab.url, hosts);
+        // Only here: a page with a content script, and manual hosts, never wait for the installation.
+        facts = EduIDE.repoFromUrl(tab.url, EduIDE.mergeHosts(settings.hosts, await announcedProviders()));
         if (!facts || facts.host === 'github.com') {
             showMessage('Open a repository page on a supported Git host. If you are on one, reload it first.');
             return;

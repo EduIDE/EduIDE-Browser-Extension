@@ -299,6 +299,7 @@
     const PROVIDER_TYPES = ['github', 'gitlab'];
     const PROVIDERS_TTL_MS = 24 * 60 * 60 * 1000;
     const PROVIDERS_KEY = 'gitProviders';
+    const PROVIDERS_TIMEOUT_MS = 5000;
 
     function parseGitProviders(status) {
         const list = status && typeof status === 'object' ? status.gitProviders : undefined;
@@ -344,19 +345,20 @@
             return { providers: [] };
         }
         const origin = new URL(url).origin;
-        const cache = (await storageArea.get(PROVIDERS_KEY))[PROVIDERS_KEY] ?? {};
-        const cached = Object.hasOwn(cache, origin) ? cache[origin] : undefined;
+        // One key per installation: a shared object would lose entries when two loads overlap.
+        const key = `${PROVIDERS_KEY}:${origin}`;
+        const cached = (await storageArea.get(key))[key];
         const valid = cached && Array.isArray(cached.providers) && Number.isFinite(cached.fetchedAt);
         if (valid && !force && now - cached.fetchedAt >= 0 && now - cached.fetchedAt < PROVIDERS_TTL_MS) {
             return { providers: cached.providers, fetchedAt: cached.fetchedAt };
         }
         try {
-            const response = await fetchFn(url, { cache: 'no-store', credentials: 'omit' });
+            const response = await fetchFn(url, { cache: 'no-store', credentials: 'omit', signal: AbortSignal.timeout(PROVIDERS_TIMEOUT_MS) });
             if (!response.ok) {
                 throw new Error(`the status page answered ${response.status}`);
             }
             const providers = parseGitProviders(await response.json());
-            await storageArea.set({ [PROVIDERS_KEY]: { ...cache, [origin]: { providers, fetchedAt: now } } });
+            await storageArea.set({ [key]: { providers, fetchedAt: now } });
             return { providers, fetchedAt: now };
         } catch (error) {
             return valid ? { providers: cached.providers, fetchedAt: cached.fetchedAt, error } : { providers: [], error };

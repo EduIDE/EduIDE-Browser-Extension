@@ -334,6 +334,7 @@ function fakeStorage(initial = {}) {
 const answer = (body, status = 200) => async () => ({ ok: status < 400, status, json: async () => body });
 const URL_ = 'https://ide.example.org/';
 const ORIGIN = 'https://ide.example.org';
+const KEY = `gitProviders:${ORIGIN}`;
 
 test('loadGitProviders fetches, caches and reuses the answer for 24 hours', async () => {
     const storage = fakeStorage();
@@ -342,7 +343,7 @@ test('loadGitProviders fetches, caches and reuses the answer for 24 hours', asyn
     const t0 = 1_000_000;
     const first = await EduIDE.loadGitProviders(URL_, storage, fetchFn, { now: t0 });
     assert.deepEqual(first, { providers: [{ host: 'gitlab.example.org', type: 'gitlab', displayName: 'Uni GitLab' }], fetchedAt: t0 });
-    assert.equal(storage.data.gitProviders[ORIGIN].fetchedAt, t0);
+    assert.equal(storage.data[KEY].fetchedAt, t0);
     await EduIDE.loadGitProviders(URL_, storage, fetchFn, { now: t0 + 24 * 3600 * 1000 - 1 });
     assert.equal(calls, 1);
     await EduIDE.loadGitProviders(URL_, storage, fetchFn, { now: t0 + 24 * 3600 * 1000 });
@@ -351,26 +352,26 @@ test('loadGitProviders fetches, caches and reuses the answer for 24 hours', asyn
     assert.equal(calls, 3, 'refresh forces a fetch');
     await EduIDE.loadGitProviders('https://other.example.org/', storage, fetchFn, { now: t0 });
     assert.equal(calls, 4, 'another installation has its own entry');
-    assert.deepEqual(Object.keys(storage.data.gitProviders).sort(), ['https://ide.example.org', 'https://other.example.org']);
+    assert.deepEqual(Object.keys(storage.data).sort(), ['gitProviders:https://ide.example.org', 'gitProviders:https://other.example.org']);
 });
 
 test('a missing field is cached as no providers', async () => {
     const storage = fakeStorage();
     const result = await EduIDE.loadGitProviders(URL_, storage, answer({ version: '2.7' }), { now: 5 });
     assert.deepEqual(result, { providers: [], fetchedAt: 5 });
-    assert.deepEqual(storage.data.gitProviders[ORIGIN], { providers: [], fetchedAt: 5 });
+    assert.deepEqual(storage.data[KEY], { providers: [], fetchedAt: 5 });
 });
 
 test('a failed fetch changes nothing and keeps the stale cache', async () => {
     const entry = { providers: [{ host: 'gitlab.example.org', type: 'gitlab', displayName: 'Uni GitLab' }], fetchedAt: 10 };
-    const storage = fakeStorage({ gitProviders: { [ORIGIN]: entry } });
+    const storage = fakeStorage({ [KEY]: entry });
     const later = 10 + 25 * 3600 * 1000;
     for (const fetchFn of [answer({}, 503), async () => { throw new TypeError('Failed to fetch'); }, async () => ({ ok: true, json: async () => { throw new SyntaxError('bad json'); } })]) {
         const result = await EduIDE.loadGitProviders(URL_, storage, fetchFn, { now: later });
         assert.deepEqual(result.providers, entry.providers);
         assert.equal(result.fetchedAt, 10);
         assert.ok(result.error);
-        assert.deepEqual(storage.data.gitProviders[ORIGIN], entry);
+        assert.deepEqual(storage.data[KEY], entry);
     }
     const empty = await EduIDE.loadGitProviders(URL_, fakeStorage(), answer({}, 500));
     assert.deepEqual(empty.providers, []);
@@ -378,11 +379,30 @@ test('a failed fetch changes nothing and keeps the stale cache', async () => {
 });
 
 test('loadGitProviders survives a damaged cache and an unusable address', async () => {
-    for (const damaged of [{ gitProviders: 'x' }, { gitProviders: { [ORIGIN]: { providers: 'x', fetchedAt: 'y' } } }, { gitProviders: { [ORIGIN]: null } }]) {
+    for (const damaged of [{ [KEY]: 'x' }, { [KEY]: { providers: 'x', fetchedAt: 'y' } }, { [KEY]: null }]) {
         const storage = fakeStorage(damaged);
         assert.equal((await EduIDE.loadGitProviders(URL_, storage, answer({ gitProviders: [provider()] }), { now: 1 })).providers.length, 1);
     }
     let called = false;
     assert.deepEqual(await EduIDE.loadGitProviders('', fakeStorage(), async () => (called = true)), { providers: [] });
     assert.equal(called, false);
+});
+
+test('overlapping loads for two installations keep both cache entries', async () => {
+    const storage = fakeStorage();
+    const slowStorage = { ...storage, get: async (key) => { const value = await storage.get(key); await new Promise((resolve) => setTimeout(resolve, 5)); return value; } };
+    const ok = answer({ gitProviders: [provider()] });
+    await Promise.all([
+        EduIDE.loadGitProviders(URL_, slowStorage, ok, { now: 1 }),
+        EduIDE.loadGitProviders('https://other.example.org/', slowStorage, ok, { now: 1 })
+    ]);
+    assert.deepEqual(Object.keys(storage.data).sort(), ['gitProviders:https://ide.example.org', 'gitProviders:https://other.example.org']);
+});
+
+test('the status request is bounded by a timeout signal and fails soft', async () => {
+    let signal;
+    const result = await EduIDE.loadGitProviders(URL_, fakeStorage(), async (url, init) => { signal = init.signal; throw new DOMException('timed out', 'TimeoutError'); }, { now: 1 });
+    assert.ok(signal instanceof AbortSignal);
+    assert.deepEqual(result.providers, []);
+    assert.ok(result.error);
 });

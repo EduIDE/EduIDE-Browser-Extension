@@ -90,8 +90,11 @@ only) and `gitRef` when enabled in the options. Credentials in the tab's address
 
 **The 3.0 landing page** (`landing-page/src/launch.ts`, `parseLaunchParams`) requires `appDef`: a link without it is
 not a launch link, the page shows its normal home and `gitUri` is not read. Links for GitLab and Gitea (and GitHub
-repositories in an unmapped language) carry no `appDef` and therefore only reach the home page until the landing page
-accepts a link without one. `appDef` must be a template name of that installation, else the page shows "unknown
+repositories in an unmapped language) carry no `appDef`. Released landing pages therefore show only their home page
+for them (known gap). The EduIDE 3.x landing page with Git accounts
+([EduIDE-control-plane#33](https://github.com/EduIDE/EduIDE-control-plane/pull/33), unreleased) shows a template
+picker for a link that has `gitUri` but a missing or unknown `appDef`, so there such links no longer end on the home
+page. `appDef` must be a template name of that installation, else the page shows "unknown
 template". `gitRef` is parsed, but `GIT_REF` reaches a session only when the template lists it in `injectableKeys`,
 which none does yet (Docs PR 35). `gitUri` may be in the query; the page reads it from there.
 

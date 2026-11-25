@@ -147,13 +147,16 @@
             return;
         }
         const origins = [`${new URL(url).origin}/*`];
+        // A slower answer for an installation that is no longer selected must not overwrite the table.
+        const stillSelected = () => EduIDE.statusUrl(currentInstallation().url) === url;
         try {
             // Must run directly in the click handler: Chrome only shows the permission prompt for a user gesture.
             const allowed = ask ? await chrome.permissions.request({ origins }) : await chrome.permissions.contains({ origins });
             const fetchFn = allowed ? fetch : () => Promise.reject(new Error('permission to read the installation was not granted'));
-            renderProviders(await EduIDE.loadGitProviders(url, chrome.storage.local, fetchFn, { force }));
+            const result = await EduIDE.loadGitProviders(url, chrome.storage.local, fetchFn, { force });
+            if (stillSelected()) renderProviders(result);
         } catch (error) {
-            renderProviders({ providers: [], error });
+            if (stillSelected()) renderProviders({ providers: [], error });
         }
     }
 
