@@ -74,17 +74,15 @@
         url = undefined;
         $('open').disabled = true;
         $('url-details').hidden = true;
-        if (facts.isPublic === false) {
-            showMessage('Private repositories are not supported yet.');
-            return;
-        }
         try {
             url = EduIDE.buildLaunchUrl(settings, facts);
         } catch (error) {
             showMessage(error.message);
             return;
         }
-        showMessage('');
+        showMessage(
+            facts.isPublic === false ? 'Private repository: EduIDE will ask you to sign in to GitHub to clone it.' : ''
+        );
         $('url').textContent = url;
         $('url-details').hidden = false;
         $('open').disabled = false;

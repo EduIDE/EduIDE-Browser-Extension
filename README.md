@@ -5,7 +5,9 @@ EduIDE landing page with the repository and a matching language image preselecte
 repository into `/home/project`.
 
 A prototype. It builds a link to the landing page's existing `appDef` and `gitUri` parameters, so it needs no change to
-any other EduIDE repository, and it works for **public repositories only**.
+any other EduIDE repository. Private repositories open the same way: the link never carries credentials, and Scorpio
+asks the student to sign in to GitHub inside the session before it clones (needs the Scorpio GitHub module, see
+[Private repositories](#private-repositories)).
 
 Plain JavaScript, Manifest V3, no build step and no dependencies. Chrome and Edge 116+.
 
@@ -87,8 +89,10 @@ Repeat with one or two of the other repositories. `octocat/Hello-World` has no l
 
 Open a private repository you have access to → **<> Code**.
 
-- [ ] The item is greyed out and does nothing. Its tooltip says "Private repositories are not supported yet".
-- [ ] The popup says the same and keeps its button disabled.
+- [ ] The item is enabled and shows a padlock after its label. Its tooltip says "Private repository: EduIDE will ask
+  you to sign in to GitHub to clone it".
+- [ ] The popup shows the repository as "(private)", the same hint, and an enabled button.
+- [ ] The generated link is the same as for a public repository: no token, no username.
 
 ### 4. Toolbar popup
 
@@ -159,7 +163,10 @@ reopens your first repository's session when you open a second one with the same
 - The popup and options pages, rendered with stubbed extension APIs.
 
 **Not verified:** loading the packed extension in Chrome itself (the built-in test browser cannot load extensions), a
-logged-in launch on TUM, and private repositories.
+logged-in launch on TUM, and the private clone against real GitHub (it was tested against a stand-in GitHub server on
+the local cluster, see [EduIDE/scorpio#206](https://github.com/EduIDE/scorpio/pull/206)). The private-repository
+item was checked by loading the content script into a GitHub page marked private: padlock, tooltip, enabled, and a
+click sends `isPublic: false`.
 
 ## Unit tests
 
@@ -216,8 +223,10 @@ toolbar popup keeps working.
   repository opened with that image reopens it (see Troubleshooting). Fixed in
   [EduIDE/EduIDE-Cloud#147](https://github.com/EduIDE/EduIDE-Cloud/pull/147); this limitation ends once that is
   deployed.
-- **Public repositories only.** A private one would need credentials in `gitUri`, which would end up in URLs, browser
-  history and the session's environment.
+- <a id="private-repositories"></a>**Private repositories need Scorpio's GitHub module.** The extension only marks them;
+  the anonymous clone fails, and Scorpio offers to sign in to GitHub (device flow) and clone with that token. This needs
+  a Scorpio release with the GitHub module in the IDE image and an OAuth App client ID in the installation's
+  `landingPage.sessionEnv.SCORPIO_GITHUB_CLIENT_ID`. Without them the session opens empty with a clone error.
 - **The landing page shows the language picker** instead of starting at once. It auto-starts only for Artemis links,
   which carry an `artemisToken`.
 - **The default branch is always cloned.** Scorpio has no branch parameter yet; the experimental `gitRef` option only
