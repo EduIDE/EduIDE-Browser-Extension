@@ -74,8 +74,12 @@
         // mapping for that address.
         detected: {},
         // Today's landing page ignores gitRef; it is sent only for testing the proposed GIT_REF support.
-        sendRef: false
+        sendRef: false,
+        // Self-hosted GitLab and Gitea servers: host -> 'gitlab' | 'gitea'. Added to DEFAULT_HOSTS.
+        hosts: {}
     };
+
+    const DEFAULT_HOSTS = { 'github.com': 'github', 'gitlab.com': 'gitlab', 'codeberg.org': 'gitea' };
 
     // An app's label on the landing page (its chart `landingPage.label`) -> the GitHub languages it serves.
     const LANGUAGES_BY_LABEL = [
@@ -97,6 +101,18 @@
         'settings', 'site', 'sponsors', 'stars', 'topics', 'trending', 'users', 'watching'
     ]);
 
+    // First path segments that are GitLab or Gitea pages, not namespaces. Best effort, like RESERVED_OWNERS.
+    const RESERVED_GITLAB = new Set(['-', 'admin', 'api', 'dashboard', 'explore', 'groups', 'help', 'oauth', 'profile', 'projects', 'search', 'snippets', 'users']);
+    const RESERVED_GITEA = new Set(['-', 'admin', 'api', 'assets', 'attachments', 'avatars', 'explore', 'issues', 'milestones', 'notifications', 'org', 'pulls', 'repo', 'user']);
+
+    // Project pages GitLab still serves without the /-/ marker. A project has two segments or more, so the first one
+    // at index 2 or later ends the path. A subgroup with one of these names is not found, which is rare.
+    const GITLAB_SUBPAGES = new Set(['activity', 'blob', 'branches', 'commits', 'compare', 'find_file', 'forks', 'graphs', 'issues', 'merge_requests', 'network', 'pipelines', 'raw', 'settings', 'tags', 'tree', 'wikis']);
+    // Same rule as the landing page's sanitizeGitRef: a bad ref is dropped, not repaired.
+    const UNSAFE_REF = /^-|\.\.|@\{|[\s\x00-\x1f\x7f]/;
+
+    const SEGMENT_PATTERN = /^[A-Za-z0-9._-]+$/;
+    const HOST_PATTERN = /^[a-z0-9.-]+(?::\d{1,5})?$/i;
     const NWO_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
 
     function isValidNwo(nwo) {
@@ -110,6 +126,83 @@
         }
         const nwo = `${owner}/${repo.replace(/\.git$/, '')}`;
         return isValidNwo(nwo) ? nwo : undefined;
+    }
+
+    // The repository behind a tab's address, for pages where no content script answers. Refs are the first path segment
+    // only: a branch with a slash (feature/x) is cut at the slash, because the URL does not say where the ref ends.
+    function repoFromUrl(href, hosts) {
+        let url;
+        try {
+            url = new URL(href);
+        } catch {
+            return undefined;
+        }
+        const known = { ...hosts, ...DEFAULT_HOSTS };
+        const type = Object.hasOwn(known, url.host) ? known[url.host] : undefined;
+        if (url.protocol !== 'https:' || !type) {
+            return undefined;
+        }
+        if (type === 'github') {
+            const nwo = repoFromPath(url.pathname);
+            return nwo && { host: url.host, nwo };
+        }
+        const segments = url.pathname.split('/').filter(Boolean);
+        let path;
+        let kind, refType, ref;
+        if (type === 'gitlab') {
+            let cut = segments.indexOf('-');
+            if (cut < 0) {
+                cut = segments.findIndex((segment, i) => i >= 2 && GITLAB_SUBPAGES.has(segment));
+            }
+            path = cut < 0 ? segments : segments.slice(0, cut);
+            [kind, ref] = cut < 0 ? [] : segments.slice(cut + 1);
+            if (kind !== 'tree' && kind !== 'blob') {
+                ref = undefined;
+            }
+        } else {
+            path = segments.slice(0, 2);
+            [kind, refType, ref] = segments.slice(2);
+            if (kind !== 'src' || !['branch', 'tag', 'commit'].includes(refType)) {
+                ref = undefined;
+            }
+        }
+        if (path.length) {
+            path[path.length - 1] = path[path.length - 1].replace(/\.git$/, '');
+        }
+        const reserved = type === 'gitlab' ? RESERVED_GITLAB : RESERVED_GITEA;
+        if (path.length < 2 || reserved.has(path[0].toLowerCase()) || !path.every(isValidSegment)) {
+            return undefined;
+        }
+        try {
+            ref = ref && decodeURIComponent(ref);
+        } catch {
+            ref = undefined;
+        }
+        return { host: url.host, nwo: path.join('/'), ref: ref && !UNSAFE_REF.test(ref) ? ref : undefined };
+    }
+
+    function isValidSegment(segment) {
+        return SEGMENT_PATTERN.test(segment) && !segment.startsWith('.') && segment !== '-';
+    }
+
+    // One "host type" per line, as typed on the options page.
+    function parseHosts(text) {
+        const hosts = {};
+        for (const line of String(text ?? '').split('\n').map((l) => l.trim()).filter(Boolean)) {
+            const [host, type, ...extra] = line.split(/\s+/);
+            // As the tab URL reports it: lowercase, and without the default port 443.
+            let key;
+            try {
+                key = HOST_PATTERN.test(host) ? new URL(`https://${host}`).host : undefined;
+            } catch {
+                // a port above 65535
+            }
+            if (!key || !['gitlab', 'gitea'].includes(type) || extra.length) {
+                throw new Error(`"${line}" is not of the form "host gitlab" or "host gitea".`);
+            }
+            hosts[key] = type;
+        }
+        return hosts;
     }
 
     // The Code menu's "Download ZIP" link follows the branch picker:
@@ -219,16 +312,19 @@
         if (url.protocol !== 'https:' && url.protocol !== 'http:') {
             throw new Error('The EduIDE address must start with https:// or http://.');
         }
-        if (!isValidNwo(facts?.nwo)) {
-            throw new Error('This page is not a GitHub repository.');
+        // facts.nwo is the repository path below the host: owner/repo on GitHub, group/subgroup/repo on GitLab.
+        const host = facts?.host ?? 'github.com';
+        const nwo = facts?.nwo;
+        const valid = HOST_PATTERN.test(host) && (host === 'github.com' ? isValidNwo(nwo) : typeof nwo === 'string' && nwo.split('/').length >= 2 && nwo.split('/').every(isValidSegment));
+        if (!valid) {
+            throw new Error('This page is not a repository.');
         }
         const appDef = appDefFor(settings, facts.language);
         if (appDef) {
             url.searchParams.set('appDef', appDef);
         }
         // Always HTTPS: Scorpio passes GIT_URI to new URL(), which rejects the scp-style SSH form.
-        url.searchParams.set('gitUri', `https://github.com/${facts.nwo}.git`);
-        url.searchParams.set('source', 'github');
+        url.searchParams.set('gitUri', `https://${host}/${nwo}.git`);
         if (settings.sendRef && facts.ref) {
             url.searchParams.set('gitRef', facts.ref);
         }
@@ -241,7 +337,8 @@
             ...DEFAULT_SETTINGS,
             ...stored,
             overrides: { ...(stored.overrides ?? {}) },
-            detected: { ...(stored.detected ?? {}) }
+            detected: { ...(stored.detected ?? {}) },
+            hosts: { ...(stored.hosts ?? {}) }
         };
     }
 
@@ -250,6 +347,8 @@
         DEFAULT_SETTINGS,
         isValidNwo,
         repoFromPath,
+        repoFromUrl,
+        parseHosts,
         parseArchiveRef,
         parseLanguageLabel,
         parseLandingConfig,

@@ -4,7 +4,9 @@ Adds **Open in EduIDE** to GitHub's **<> Code** menu, directly below "Open in Gi
 EduIDE landing page with the repository and a matching language image preselected. After login, Scorpio clones the
 repository into `/home/project`.
 
-A prototype. It builds a link to the landing page's existing `appDef` and `gitUri` parameters, so it needs no change to
+The toolbar button also opens GitLab and Gitea/Forgejo repositories (see [Supported hosts](#supported-hosts)).
+
+A prototype. It builds a link to the landing page's existing `appDef`, `gitUri` and `gitRef` parameters, so it needs no change to
 any other EduIDE repository, and it works for **public repositories only**.
 
 Plain JavaScript, Manifest V3, no build step and no dependencies. Chrome and Edge 116+.
@@ -40,6 +42,34 @@ really offers. Chrome asks once for permission to read that site, which is why t
 `optional_host_permissions` and no host access by default. The detected list replaces the built-in one for that
 address; **Use the built-in list** undoes it. Overrides apply on top of either.
 
+## Supported hosts
+
+| Host | Type | Opens from |
+|---|---|---|
+| `github.com` | GitHub | the Code menu and the toolbar button |
+| `gitlab.com` | GitLab | the toolbar button |
+| `codeberg.org` | Gitea | the toolbar button |
+
+The Code menu item exists on GitHub only. On GitLab and Gitea, click the toolbar button on a repository page: the
+popup reads the repository from the tab's address (the `activeTab` permission, granted by that click), so no language
+is known and the landing page asks for it.
+
+- **GitLab:** the project is the path before `/-/`, subgroups included (`group/sub/repo`). The branch comes from
+  `/-/tree/<ref>` or `/-/blob/<ref>/...`. Pages such as `/users`, `/explore`, `/dashboard` and `/groups` are skipped.
+- **Gitea and Forgejo:** `/<owner>/<repo>`; the branch, tag or commit comes from `/src/branch/<ref>`,
+  `/src/tag/<ref>` or `/src/commit/<sha>`.
+
+To add a self-hosted server, open **Options → Git hosts** and add one line per server, `git.example.org gitlab` or
+`code.example.org gitea` (Forgejo is `gitea`). A server on a port other than 443 is `git.example.org:8443 gitlab`.
+The EduIDE installation must also list the host in its `allowedHosts`, or the landing page refuses the link.
+
+The link is `https://<eduide>/?gitUri=https://<host>/<path>.git`, plus `appDef` when the language is known (GitHub
+only) and `gitRef` when enabled in the options. Credentials in the tab's address are never copied into it.
+
+
+(`feature/x`) is cut at the slash, except when the URL encodes it as `feature%2Fx`. A group page that is not under
+`/groups` (`/group/sub`) looks like a project, and the landing page then fails to clone it. Only `https://` hosts work.
+
 ## Test plan
 
 Suggested public repositories, all small enough to clone quickly:
@@ -68,7 +98,7 @@ Open `https://github.com/spring-guides/gs-rest-service` → **<> Code**.
 Click **Open in EduIDE**.
 
 - [ ] A new tab opens right next to the GitHub tab, at
-  `https://eduide.artemis.cit.tum.de/?appDef=java-17-latest&gitUri=https%3A%2F%2Fgithub.com%2Fspring-guides%2Fgs-rest-service.git&source=github`.
+  `https://eduide.artemis.cit.tum.de/?appDef=java-17-latest&gitUri=https%3A%2F%2Fgithub.com%2Fspring-guides%2Fgs-rest-service.git`.
 - [ ] The menu closes.
 - [ ] **Before each repository on TUM:** make sure no earlier test session with the same image is still running (see
   Troubleshooting, "repository from an earlier test").
@@ -98,8 +128,9 @@ On any page of a repository, click the toolbar icon.
 - [ ] Switching the **EduIDE** drop-down updates image and launch URL at once, and the Code menu item uses the new
   choice on its next click.
 - [ ] **Launch URL** shows the exact link.
-- [ ] On a non-GitHub page it asks you to open a repository. On a GitHub tab opened before the install, it asks you to
-  reload.
+- [ ] On a page that is no repository (or a host that is not configured) it asks you to open one.
+- [ ] On `https://gitlab.com/gitlab-org/gitlab/-/tree/master` and a `codeberg.org/forgejo/forgejo` page it shows the
+  repository and branch, with the language unknown, and the launch URL carries a `.git` `gitUri` for that host.
 - [ ] On a subfolder page (`/tree/main/complete`) the language is still known if you visited the repository root in
   this tab first. Without that it says "unknown", and the landing page asks for the language.
 
@@ -146,7 +177,7 @@ reopens your first repository's session when you open a second one with the same
 
 ## Already verified (22 Oct 2026)
 
-- `npm test`: 16 unit tests for parsing, app selection, `/config.js` detection and the launch URL. Detection was
+- `npm test`: unit tests for parsing, app selection, `/config.js` detection and the launch URL. Detection was
   also run against the live `config.js` of TUM, Bonn, Mannheim and the local cluster.
 - On the local EduIDE Cloud: the extension's link for `spethso/EduIDE-GitHub-Extension-Test` opened the landing page,
   picking Java 17 started a session, and that session had the repository cloned in `/home/project`.
@@ -177,15 +208,15 @@ icons/                   from EduIDE/EduIDE logo/edu-ide-hat.png
 src/lib/eduide.js        installations, app ids, settings, launch URL; shared by every part, tested in Node
 src/content/github.js    finds the Code menu, injects the item, reads repository details from the page
 src/background.js        opens the launch tab for menu clicks
-src/popup/               toolbar fallback
-src/options/             installation, language overrides, experimental gitRef
+src/popup/               toolbar button: GitHub, GitLab and Gitea
+src/options/             installation, language overrides, Git hosts, experimental gitRef
 test/eduide.test.js      node:test
 ```
 
 ## How it finds things on GitHub
 
 All details come from the page. The extension makes no GitHub API calls and no requests to EduIDE: it only opens a
-tab. Its only permission is `storage`, plus content-script access to `github.com`.
+tab. Its permissions are `storage` and `activeTab` (the toolbar popup reads the active tab's address), plus content-script access to `github.com`.
 
 | What | Where on the page |
 |---|---|
